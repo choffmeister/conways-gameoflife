@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+<body>
+	<div id="universe" style="position: fixed; left: 0; top: 0; right: 0; bottom: 0;"></div>
+	<script type="text/javascript" src="jquery-1.9.1.min.js"></script>
+	<script type="text/javascript" src="d3.min.js"></script>
+	<script type="text/javascript">
+		var i = 0;
+		var entities = [];
+		var svg = d3.select('#universe').append('svg');
+		var zoom = 1.0;
+		var center = [0, 0];
+		var scaleX = d3.scale.linear();
+		var scaleY = d3.scale.linear();
+
+		var add = function (x, y) {
+			if (!has(x, y)) {
+				entities.push({ i: i++, x: x, y: y });
+			}
+		}
+
+		var remove = function (x, y) {
+			for (var i = 0; i < entities.length; i++) {
+				if (entities[i].x == x && entities[i].y == y) {
+					var rest = entities.slice(i + 1);
+					entities.length = i;
+					entities.push.apply(entities, rest);
+					return;
+				}
+			}
+		}
+
+		var has = function (x, y) {
+			for (var i = 0; i < entities.length; i++) {
+				if (entities[i].x == x && entities[i].y == y) {
+					return true;
+				}
+			}
+
+			return false;
+		};
+
+		var check = function (x, y) {
+			var n = neighbors(x, y);
+
+			if (n < 2)
+			{
+				if (has(x,y)) {
+					return "kill";
+				}
+			}
+
+			if (n == 3 && ! has(x,y))
+			{
+				return "spawn";
+			}
+
+			if (n > 3 && has(x,y))
+			{
+				return "kill";
+			}
+
+			return null;
+		}
+
+		var neighbors = function (x, y) {
+			var neighbors = 0;
+			if (has(x-1, y-1)) neighbors++;
+			if (has(x-1, y  )) neighbors++;
+			if (has(x-1, y+1)) neighbors++;
+			if (has(x  , y-1)) neighbors++;
+			if (has(x  , y+1)) neighbors++;
+			if (has(x+1, y-1)) neighbors++;
+			if (has(x+1, y  )) neighbors++;
+			if (has(x+1, y+1)) neighbors++;
+
+			return neighbors;
+		}
+
+		var operate = function (x, y, callback) {
+			callback(x, y);
+			callback(x - 1, y - 1);
+			callback(x - 1, y    );
+			callback(x - 1, y + 1);
+			callback(x    , y - 1);
+			callback(x    , y + 1);
+			callback(x + 1, y - 1);
+			callback(x + 1, y    );
+			callback(x + 1, y + 1);
+		}
+
+		var seed = function ()
+		{
+			for (var i = 0; i < 200; i++) {
+				add(Math.floor(Math.random() * 20) - 10, Math.floor(Math.random() * 20) - 10);	
+			}
+
+			for (var i = 0; i < 200; i++) {
+				add(Math.floor(Math.random() * 20) - 40, Math.floor(Math.random() * 20) + 10);	
+			}
+
+			for (var i = 0; i < 200; i++) {
+				add(Math.floor(Math.random() * 20) + 20, Math.floor(Math.random() * 20) + 10);	
+			}
+		}
+
+		var loop = function () {
+			var actions = [];
+
+			for (var i = 0; i < entities.length; i++) {
+				var x = entities[i].x;
+				var y = entities[i].y;
+
+				operate(x, y, function (nx, ny) {
+					var c = check(nx, ny);
+					
+					if (c == "spawn")
+					{
+						actions.push({ x: nx, y: ny, a: "spawn" });
+					}
+
+					if (c == "kill")
+					{
+						actions.push({ x: nx, y: ny, a: "kill" });
+					}
+				});
+			}
+
+			for (var i = 0; i < actions.length; i++)
+			{
+				var action = actions[i];
+
+				if (action.a == "spawn")
+				{
+					add(action.x, action.y);
+				}
+
+				if (action.a == "kill")
+				{
+					remove(action.x, action.y);
+				}
+			}
+
+			redraw();
+			setTimeout(function ()  { loop(); }, 1);
+		};
+
+		var rescale = function () {
+			var width = $(window).width();
+			var height = $(window).height();
+
+			scaleX.domain([0, 1.0 / zoom]).range([width / 2 - center[0], width / 2 - center[0] + 1]);
+			scaleY.domain([0, 1.0 / zoom]).range([height / 2 - center[1], height / 2 - center[1] + 1]);
+		}
+
+		var redraw = function () {
+			var rects = svg.selectAll('rect').data(entities, function (d) {
+				return d.i;
+			});
+
+			rects
+				.enter()
+				.append('rect')
+				.attr('fill', 'black')
+				.attr('stroke', 'none');
+
+			rects
+				.attr('x', function (d) {
+					return scaleX(d.x);
+				})
+				.attr('y', function (d) {
+					return scaleY(d.y);
+				})
+				.attr('width', function (d) {
+					return scaleX(d.x + 1) - scaleX(d.x);
+				})
+				.attr('height', function (d) {
+					return scaleY(d.y + 1) - scaleY(d.y);
+				});
+
+			rects
+				.exit()
+				.remove();
+		};
+
+		seed();
+		rescale();
+		redraw();
+		loop();
+
+		$(window).resize(function (event) {
+			rescale();
+		});
+
+		$(window).keydown(function (event) {
+			switch (event.keyCode) {
+				case 38: center[1] -= 5 * zoom; break;
+				case 40: center[1] += 5 * zoom; break;
+				case 37: center[0] -= 5 * zoom; break;
+				case 39: center[0] += 5 * zoom; break;
+				case 107: zoom *= 1.1; break;
+				case 109: zoom /= 1.1; break;	
+			}
+
+			rescale();
+		});
+	</script>
+</body>
+</html>
